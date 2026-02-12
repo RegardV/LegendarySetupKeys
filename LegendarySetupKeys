@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+# Legendary Team 2025 – API Key Wizard (v2026.02.12 CORRECTED)
+# Auto-detect .envc, test keys with Anthropic endpoints, configure Claude Code properly
+
+set -e
+
+echo -e "\n=== Legendary Team 2025 – API Key Wizard (CORRECTED) ===\n"
+echo "Detects/tests/writes .envc keys for Claude Code with Anthropic-compatible endpoints.\n"
+
+PROJECT_ROOT="$(pwd)"
+CLAUDE_DIR="$PROJECT_ROOT/.claude"
+ENV_FILE="$CLAUDE_DIR/.envc"
+SETTINGS_ZAI="$CLAUDE_DIR/settings.zai.json"
+SETTINGS_KIMI="$CLAUDE_DIR/settings.kimi.json"
+SETTINGS_ACTIVE="$CLAUDE_DIR/settings.json"
+GLOBAL_CLAUDE_JSON="$HOME/.claude.json"
+GLOBAL_SETTINGS="$HOME/.claude/settings.json"
+BACKUP_DIR="$CLAUDE_DIR/.backup-auth-$(date +%Y%m%d-%H%M%S)"
+
+mkdir -p "$BACKUP_DIR" "$HOME/.claude" "$CLAUDE_DIR"
+
+# Backup
+[ -f "$ENV_FILE" ] && cp "$ENV_FILE" "$BACKUP_DIR/.envc.bak" && echo "✓ Backed up existing .envc"
+[ -f "$SETTINGS_ACTIVE" ] && cp "$SETTINGS_ACTIVE" "$BACKUP_DIR/settings.json.bak" && echo "✓ Backed up settings.json"
+[ -f "$GLOBAL_CLAUDE_JSON" ] && cp "$GLOBAL_CLAUDE_JSON" "$BACKUP_DIR/claude.json.bak"
+
+ZAI_KEY=""
+KIMI_KEY=""
+
+# Auto-retrieve from .envc
+if [ -f "$ENV_FILE" ]; then
+    echo "✓ .envc found — loading keys..."
+    source "$ENV_FILE" 2>/dev/null || echo ".envc loaded (some lines ignored)"
+    ZAI_KEY="${ZAI_KEY:-}"
+    KIMI_KEY="${KIMI_KEY:-}"
+else
+    echo "⚠ No .envc found at $ENV_FILE"
+fi
+
+# Test keys with ANTHROPIC-COMPATIBLE endpoints
+test_key() {
+    local provider="$1"
+    local key="$2"
+    local url model
+    
+    if [ "$provider" = "zai" ]; then
+        url="https://api.z.ai/api/anthropic/v1/messages"
+        model="glm-4.7"
+    else
+        url="https://api.moonshot.ai/anthropic/v1/messages"
+        model="kimi-k2-thinking-turbo"
+    fi
+
+    if ! command -v curl &> /dev/null; then
+        echo "⚠ Curl missing — skipping test for $provider (assuming valid)."
+        return 0
+    fi
+
+    echo "Testing $provider key with Anthropic endpoint..."
+    
+    # Test with Anthropic Messages API format
+    response=$(curl -s -w "%{http_code}" -X POST "$url" \
+        -H "x-api-key: $key" \
+        -H "anthropic-version: 2023-06-01" \
+        -H "Content-Type: application/json" \
+        -d "{\"model\": \"$model\", \"messages\": [{\"role\": \"user\", \"content\": \"test\"}], \"max_tokens\": 10}" \
+        -o /dev/null 2>&1)
+
+    if [ "$response" = "200" ]; then
+        echo "✓ $provider key valid!"
+        return 0
+    else
+        echo "✗ $provider key returned: $response"
+        return 1
+    fi
+}
+
+# Test existing keys
+if [ -n "$ZAI_KEY" ]; then
+    echo ""
+    if ! test_key "zai" "$ZAI_KEY"; then
+        echo "Current Z.AI key invalid or test failed."
+        read -p "Enter new Z.AI key (or press Enter to skip): " new_key
+        [ -n "$new_key" ] && ZAI_KEY="$new_key"
+    fi
+fi
+
+if [ -n "$KIMI_KEY" ]; then
+    echo ""
+    if ! test_key "kimi" "$KIMI_KEY"; then
+        echo "Current Kimi key invalid or test failed."
+        read -p "Enter new Kimi key (or press Enter to skip): " new_key
+        [ -n "$new_key" ] && KIMI_KEY="$new_key"
+    fi
+fi
+
+# Prompt if still empty
+if [ -z "$ZAI_KEY" ] && [ -z "$KIMI_KEY" ]; then
+    echo ""
+    echo "No valid keys found."
+    read -p "Configure Z.AI (GLM-4.7)? (y/n): " choice
+    if [[ "$choice" =~ ^[Yy]$ ]]; then
+        read -p "Z.AI API key: " ZAI_KEY
+    fi
+    
+    read -p "Configure Kimi K2? (y/n): " choice
+    if [[ "$choice" =~ ^[Yy]$ ]]; then
+        read -p "Kimi API key: " KIMI_KEY
+    fi
+fi
+
+if [ -z "$ZAI_KEY" ] && [ -z "$KIMI_KEY" ]; then
+    echo "⚠ No keys configured. Exiting."
+    exit 0
+fi
+
+# Persist to .envc (primary source)
+cat > "$ENV_FILE" << EOF
+# Legendary Team Keys - $(date)
+# These keys are used for Claude Code with Anthropic-compatible endpoints
+ZAI_KEY='$ZAI_KEY'
+KIMI_KEY='$KIMI_KEY'
+EOF
+chmod 600 "$ENV_FILE"
+echo "✓ Keys persisted to $ENV_FILE"
+
+# Create Z.AI settings file
+if [ -n "$ZAI_KEY" ]; then
+    cat > "$SETTINGS_ZAI" << EOF
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+    "ANTHROPIC_AUTH_TOKEN": "$ZAI_KEY",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": 1,
+    "ANTHROPIC_MODEL": "glm-4.7",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.5-air",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-4.7",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-4.7",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "glm-4.7"
+  }
+}
+EOF
+    chmod 600 "$SETTINGS_ZAI"
+    echo "✓ Created Z.AI settings: $SETTINGS_ZAI"
+fi
+
+# Create Kimi settings file
+if [ -n "$KIMI_KEY" ]; then
+    cat > "$SETTINGS_KIMI" << EOF
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.moonshot.ai/anthropic",
+    "ANTHROPIC_AUTH_TOKEN": "$KIMI_KEY",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": 1,
+    "ANTHROPIC_MODEL": "kimi-k2-thinking-turbo",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "kimi-k2-thinking-turbo",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "kimi-k2-thinking-turbo",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "kimi-k2-turbo-preview",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "kimi-k2-thinking-turbo"
+  }
+}
+EOF
+    chmod 600 "$SETTINGS_KIMI"
+    echo "✓ Created Kimi settings: $SETTINGS_KIMI"
+fi
+
+# Set default active settings
+if [ -f "$SETTINGS_ZAI" ]; then
+    cp "$SETTINGS_ZAI" "$SETTINGS_ACTIVE"
+    echo "✓ Set Z.AI as active configuration"
+    DEFAULT_PROVIDER="zai"
+elif [ -f "$SETTINGS_KIMI" ]; then
+    cp "$SETTINGS_KIMI" "$SETTINGS_ACTIVE"
+    echo "✓ Set Kimi as active configuration"
+    DEFAULT_PROVIDER="kimi"
+fi
+
+# Setup ~/.claude.json (skip login)
+cat > "$GLOBAL_CLAUDE_JSON" << 'EOF'
+{
+  "hasCompletedOnboarding": true,
+  "customApiKeyResponses": {
+    "approved": [],
+    "rejected": []
+  },
+  "theme": "dark"
+}
+EOF
+echo "✓ Configured ~/.claude.json (login disabled)"
+
+# Clear global settings to avoid conflicts
+echo '{}' > "$GLOBAL_SETTINGS"
+echo "✓ Cleared global settings (using project-level only)"
+
+# Create model switcher script
+SWITCHER="$PROJECT_ROOT/switch-model"
+cat > "$SWITCHER" << 'EOF'
+#!/bin/bash
+# Model Switcher for Claude Code
+
+CLAUDE_DIR="$(dirname "$0")/.claude"
+
+if [ "$1" = "zai" ]; then
+    if [ -f "$CLAUDE_DIR/settings.zai.json" ]; then
+        cp "$CLAUDE_DIR/settings.zai.json" "$CLAUDE_DIR/settings.json"
+        echo "✓ Switched to Z.AI (GLM-4.7)"
+    else
+        echo "✗ Z.AI settings not found"
+        exit 1
+    fi
+elif [ "$1" = "kimi" ]; then
+    if [ -f "$CLAUDE_DIR/settings.kimi.json" ]; then
+        cp "$CLAUDE_DIR/settings.kimi.json" "$CLAUDE_DIR/settings.json"
+        echo "✓ Switched to Kimi K2"
+    else
+        echo "✗ Kimi settings not found"
+        exit 1
+    fi
+else
+    echo "Current configuration:"
+    grep -E "ANTHROPIC_BASE_URL|ANTHROPIC_MODEL" "$CLAUDE_DIR/settings.json" 2>/dev/null || echo "No active configuration"
+    echo ""
+    echo "Usage: $0 [zai|kimi]"
+    echo "  zai   - Switch to Z.AI (GLM-4.7)"
+    echo "  kimi  - Switch to Kimi K2"
+fi
+EOF
+chmod +x "$SWITCHER"
+echo "✓ Created model switcher: $SWITCHER"
+
+# Create status checker
+STATUS_SCRIPT="$PROJECT_ROOT/check-config"
+cat > "$STATUS_SCRIPT" << 'EOF'
+#!/bin/bash
+echo "=== Claude Code Configuration ==="
+echo ""
+if [ -f ".claude/settings.json" ]; then
+    echo "Active Configuration:"
+    grep -E "ANTHROPIC_BASE_URL|ANTHROPIC_MODEL" .claude/settings.json | sed 's/^/  /'
+else
+    echo "✗ No active configuration found"
+fi
+echo ""
+echo "Available Configurations:"
+[ -f ".claude/settings.zai.json" ] && echo "  ✓ Z.AI (GLM-4.7)" || echo "  ✗ Z.AI"
+[ -f ".claude/settings.kimi.json" ] && echo "  ✓ Kimi K2" || echo "  ✗ Kimi K2"
+echo ""
+echo "Switch with: ./switch-model [zai|kimi]"
+EOF
+chmod +x "$STATUS_SCRIPT"
+echo "✓ Created status checker: $STATUS_SCRIPT"
+
+echo ""
+echo "=== SETUP COMPLETE ==="
+echo ""
+

@@ -1,0 +1,1073 @@
+# Claude Code Multi-Provider Setup - User Manual
+
+**Version:** 2026.02.12  
+**Author:** Legendary Team 2025  
+**Project:** n8n-ai-studio Claude Code Configuration
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Quick Start](#quick-start)
+3. [Prerequisites](#prerequisites)
+4. [Installation](#installation)
+5. [Configuration](#configuration)
+6. [Daily Usage](#daily-usage)
+7. [Model Switching](#model-switching)
+8. [API Key Management](#api-key-management)
+9. [Troubleshooting](#troubleshooting)
+10. [Advanced Features](#advanced-features)
+11. [Best Practices](#best-practices)
+12. [FAQ](#faq)
+13. [Reference](#reference)
+
+---
+
+## Overview
+
+### What is This?
+
+This setup allows you to use **Claude Code** (Anthropic's AI coding assistant) with **alternative AI providers** at significantly reduced costs:
+
+- **Z.AI (Zhipu AI)** - GLM-4.7 models (~85% cheaper than Claude)
+- **Kimi K2 (Moonshot AI)** - Advanced reasoning models (~85-95% cheaper)
+
+### Key Features
+
+✅ **No Login Required** - Skip Anthropic authentication  
+✅ **Project-Specific** - Configurations isolated per project  
+✅ **Easy Switching** - Change providers with one command  
+✅ **Secure** - API keys encrypted with proper permissions  
+✅ **No Conflicts** - Clean configuration without environment pollution
+
+### System Architecture
+```
+Your Project
+├── .claude/
+│   ├── .envc                    # API keys (secure storage)
+│   ├── settings.json            # Active configuration
+│   ├── settings.zai.json        # Z.AI template
+│   └── settings.kimi.json       # Kimi K2 template
+├── switch-model                 # Provider switcher script
+├── check-config                 # Configuration viewer
+└── LegendarySetupKeys          # Setup wizard
+```
+
+---
+
+## Quick Start
+
+### 5-Minute Setup
+```bash
+# 1. Navigate to your project
+cd ~/n8n-ai-studio
+
+# 2. Run the setup wizard
+bash LegendarySetupKeys
+
+# 3. Enter your API keys when prompted
+
+# 4. Start using Claude Code
+claude
+
+# 5. Verify configuration
+/status
+```
+
+### First Commands to Try
+```bash
+# Check configuration
+./check-config
+
+# Switch to Kimi K2
+./switch-model kimi
+
+# Switch to Z.AI
+./switch-model zai
+
+# Start Claude Code
+claude
+```
+
+---
+
+## Prerequisites
+
+### Required Software
+
+| Software | Minimum Version | Purpose |
+|----------|----------------|---------|
+| **Ubuntu** | 20.04+ | Operating system |
+| **Node.js** | v18.0+ | Claude Code runtime |
+| **npm** | v10.0+ | Package manager |
+| **curl** | Any | API testing |
+| **bash** | 4.0+ | Script execution |
+
+### Check Your System
+```bash
+# Check Node.js
+node -v              # Should show v18.0 or higher
+npm -v               # Should show v10.0 or higher
+
+# Check other tools
+curl --version
+bash --version
+```
+
+### Install Missing Dependencies
+```bash
+# Install Node.js 20
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Verify installation
+node -v
+npm -v
+```
+
+### API Keys Required
+
+You need at least ONE of these:
+
+1. **Z.AI API Key**
+   - Get from: [api.z.ai](https://api.z.ai) (International)
+   - Or: [open.bigmodel.cn](https://open.bigmodel.cn) (Mainland China)
+   - Format: `hexstring.moredata` (e.g., `85208aff...844f9.2BFI...`)
+
+2. **Kimi K2 API Key**
+   - Get from: [platform.moonshot.ai](https://platform.moonshot.ai/console)
+   - Format: `sk-xxxxx...` (starts with `sk-`)
+
+---
+
+## Installation
+
+### Step 1: Install Claude Code
+```bash
+# Configure npm global directory
+mkdir -p ~/.npm-global
+npm config set prefix '~/.npm-global'
+
+# Add to PATH
+echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Install Claude Code
+npm install -g @anthropic-ai/claude-code
+
+# Verify installation
+claude --version
+# Should output: 2.1.37 (Claude Code) or similar
+```
+
+### Step 2: Download Setup Script
+```bash
+# Navigate to your project
+cd ~/n8n-ai-studio
+
+# Save the LegendarySetupKeys script
+# (paste the corrected script content here)
+
+# Make it executable
+chmod +x LegendarySetupKeys
+```
+
+### Step 3: Run Setup Wizard
+```bash
+# Execute the setup script
+bash LegendarySetupKeys
+```
+
+**The wizard will:**
+1. Check for existing API keys in `.claude/.envc`
+2. Test keys with actual API calls
+3. Prompt for new keys if needed or invalid
+4. Create configuration files
+5. Generate switcher scripts
+6. Configure skip-login settings
+
+### Step 4: Verify Installation
+```bash
+# Check that all files were created
+ls -la .claude/
+# Should show: .envc, settings.json, settings.zai.json, settings.kimi.json
+
+# Check scripts were created
+ls -la switch-model check-config
+# Should show: both files exist and are executable
+
+# View current configuration
+./check-config
+```
+
+---
+
+## Configuration
+
+### Configuration Files Explained
+
+#### `.claude/.envc` - API Key Storage
+
+**Purpose:** Secure storage for API keys  
+**Format:** Bash variable assignments  
+**Permissions:** `600` (owner read/write only)
+```bash
+# API Keys - 2026-02-12
+ZAI_KEY='your-zai-api-key'
+KIMI_KEY='your-kimi-api-key'
+```
+
+#### `.claude/settings.zai.json` - Z.AI Configuration
+
+**Purpose:** Template for Z.AI/GLM-4.7 provider  
+**Active when:** You run `./switch-model zai`
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+    "ANTHROPIC_AUTH_TOKEN": "your-zai-key",
+    "ANTHROPIC_MODEL": "glm-4.7",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.5-air",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-4.7",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "glm-4.7"
+  }
+}
+```
+
+#### `.claude/settings.kimi.json` - Kimi K2 Configuration
+
+**Purpose:** Template for Kimi K2 provider  
+**Active when:** You run `./switch-model kimi`
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.moonshot.ai/anthropic",
+    "ANTHROPIC_AUTH_TOKEN": "your-kimi-key",
+    "ANTHROPIC_MODEL": "kimi-k2-thinking-turbo",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "kimi-k2-thinking-turbo",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "kimi-k2-thinking-turbo",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "kimi-k2-turbo-preview"
+  }
+}
+```
+
+#### `.claude/settings.json` - Active Configuration
+
+**Purpose:** The configuration Claude Code actually reads  
+**Source:** Copy of either `settings.zai.json` or `settings.kimi.json`  
+**Modified by:** `switch-model` script
+
+#### `~/.claude.json` - Global Settings
+
+**Purpose:** Skip Anthropic login flow  
+**Location:** Home directory (global)
+```json
+{
+  "hasCompletedOnboarding": true,
+  "customApiKeyResponses": {
+    "approved": [],
+    "rejected": []
+  },
+  "theme": "dark"
+}
+```
+
+### Directory Structure
+```
+~/n8n-ai-studio/                    # Your project root
+├── .claude/                        # Claude Code configuration
+│   ├── .envc                       # API keys (chmod 600)
+│   ├── settings.json               # Active config (changes)
+│   ├── settings.zai.json           # Z.AI template (static)
+│   ├── settings.kimi.json          # Kimi template (static)
+│   └── .backup-auth-TIMESTAMP/     # Automatic backups
+├── switch-model                    # Model switcher script
+├── check-config                    # Configuration viewer
+├── LegendarySetupKeys             # Setup wizard
+└── CLAUDE.md                       # Project documentation
+```
+
+---
+
+## Daily Usage
+
+### Starting Claude Code
+```bash
+# Always start from your project directory
+cd ~/n8n-ai-studio
+
+# Start Claude Code
+claude
+
+# You should see:
+# - No login prompt
+# - Direct access to Claude Code interface
+# - Your configured model active
+```
+
+### Basic Commands Inside Claude
+```bash
+# Check current configuration
+/status
+
+# Get help
+/help
+
+# List available commands
+/commands
+
+# Exit Claude Code
+# Press Ctrl+C twice
+```
+
+### Typical Workflow
+```bash
+# 1. Choose your model
+./switch-model kimi          # For complex reasoning tasks
+# or
+./switch-model zai           # For cost-effective general coding
+
+# 2. Start Claude Code
+claude
+
+# 3. Work on your project
+> Help me refactor this function
+> Write unit tests for auth.py
+> Debug the API timeout issue
+
+# 4. Exit when done
+# Press Ctrl+C twice
+
+# 5. Switch models if needed
+./switch-model zai
+claude
+```
+
+---
+
+## Model Switching
+
+### The Switcher Script
+
+**Location:** `~/n8n-ai-studio/switch-model`
+
+### Basic Usage
+```bash
+# Switch to Z.AI (GLM-4.7)
+./switch-model zai
+
+# Switch to Kimi K2  
+./switch-model kimi
+
+# Show current configuration
+./switch-model
+```
+
+### When to Use Each Model
+
+#### Use Z.AI (GLM-4.7) When:
+- ✅ Standard coding tasks
+- ✅ Code refactoring
+- ✅ Documentation writing
+- ✅ Simple debugging
+- ✅ Cost is a primary concern
+- ✅ Chinese language projects
+
+**Strengths:**
+- Very cost-effective (~85% cheaper)
+- Fast response times
+- Good for routine tasks
+- Strong Chinese language support
+
+**Limitations:**
+- Less capable with complex reasoning
+- May need more guidance for tricky problems
+
+#### Use Kimi K2 When:
+- ✅ Complex architectural decisions
+- ✅ Advanced debugging
+- ✅ Algorithm design
+- ✅ Research and analysis
+- ✅ Multi-step reasoning tasks
+- ✅ Code optimization
+
+**Strengths:**
+- Superior reasoning capabilities
+- Better context understanding (256K tokens)
+- Thinking process transparency (thinking-turbo model)
+- Advanced tool use
+
+**Limitations:**
+- Slightly more expensive (still 85-95% cheaper than Claude)
+- May be slower for simple tasks
+
+### Switching During Active Work
+```bash
+# You're using Z.AI and hit a complex problem
+# Exit Claude (Ctrl+C twice)
+
+# Switch to Kimi for better reasoning
+./switch-model kimi
+
+# Restart Claude
+claude
+
+# Now continue with more powerful model
+> Help me debug this race condition...
+```
+
+### Check Before Switching
+```bash
+# See current configuration
+./check-config
+
+# Output shows:
+# - Currently active provider
+# - Available providers
+# - How to switch
+```
+
+---
+
+## API Key Management
+
+### Viewing Your Keys
+```bash
+# View keys (secure - only shows if you have permission)
+cat .claude/.envc
+
+# Check permissions
+ls -la .claude/.envc
+# Should show: -rw------- (600 permissions)
+```
+
+### Updating Keys
+
+#### Method 1: Edit .envc File
+```bash
+# Edit the keys file
+nano .claude/.envc
+
+# Update the keys:
+ZAI_KEY='new-zai-key-here'
+KIMI_KEY='new-kimi-key-here'
+
+# Save and exit (Ctrl+X, Y, Enter)
+
+# Re-run setup to update settings files
+bash LegendarySetupKeys
+```
+
+#### Method 2: Re-run Setup Wizard
+```bash
+# The wizard will detect invalid keys and prompt for new ones
+bash LegendarySetupKeys
+
+# It will:
+# 1. Test existing keys
+# 2. Ask for new keys if tests fail
+# 3. Update all configuration files
+```
+
+### Security Best Practices
+
+#### DO:
+✅ Keep `.envc` permissions at `600`
+✅ Add `.envc` to `.gitignore`
+✅ Rotate keys periodically
+✅ Use separate keys for different projects
+✅ Store backup keys securely (password manager)
+
+#### DON'T:
+❌ Commit `.envc` to version control
+❌ Share keys in chat/email
+❌ Use the same key across all projects
+❌ Set overly permissive file permissions
+
+### Key Rotation Procedure
+```bash
+# 1. Get new keys from providers
+# Z.AI: https://api.z.ai
+# Kimi: https://platform.moonshot.ai/console
+
+# 2. Update .envc
+nano .claude/.envc
+
+# 3. Test new keys
+bash LegendarySetupKeys
+
+# 4. Verify
+./check-config
+
+# 5. Test Claude Code
+claude
+/status
+```
+
+### Backup Your Keys
+```bash
+# Create encrypted backup (recommended)
+gpg -c .claude/.envc
+# Creates: .envc.gpg (encrypted)
+
+# Restore from backup
+gpg .envc.gpg
+# Outputs: .envc (decrypted)
+
+# Or simple backup (less secure)
+cp .claude/.envc .claude/.envc.backup.$(date +%Y%m%d)
+chmod 600 .claude/.envc.backup.*
+```
+
+---
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### Issue: "claude: command not found"
+
+**Cause:** Claude Code not installed or not in PATH
+
+**Solution:**
+```bash
+# Check if installed
+npm list -g @anthropic-ai/claude-code
+
+# If not installed
+npm install -g @anthropic-ai/claude-code
+
+# Add to PATH
+echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Verify
+claude --version
+```
+
+#### Issue: "Auth conflict: Both a token and an API key are set"
+
+**Cause:** Environment variables conflicting with settings files
+
+**Solution:**
+```bash
+# Check for conflicting environment variables
+env | grep ANTHROPIC
+
+# If you see any, unset them
+unset ANTHROPIC_API_KEY
+unset ANTHROPIC_AUTH_TOKEN
+
+# Remove from .bashrc if present
+nano ~/.bashrc
+# Delete any ANTHROPIC_* export lines
+
+# Reload shell
+source ~/.bashrc
+
+# Verify clean environment
+env | grep ANTHROPIC
+# Should show nothing
+
+# Clear global settings
+echo '{}' > ~/.claude/settings.json
+
+# Restart Claude
+cd ~/n8n-ai-studio
+claude
+```
+
+#### Issue: "API timeout" or "Connection failed"
+
+**Cause:** Wrong API endpoint or invalid key
+
+**Solution:**
+```bash
+# Check your settings
+cat .claude/settings.json
+
+# Verify endpoints:
+# Z.AI should be: https://api.z.ai/api/anthropic
+# Kimi should be: https://api.moonshot.ai/anthropic
+
+# Test keys manually
+bash LegendarySetupKeys
+# The wizard will test keys and report issues
+
+# If endpoints are wrong, re-run setup
+bash LegendarySetupKeys
+```
+
+#### Issue: "Login prompt appears"
+
+**Cause:** Missing or incorrect `~/.claude.json`
+
+**Solution:**
+```bash
+# Recreate global config
+cat > ~/.claude.json << 'EOF'
+{
+  "hasCompletedOnboarding": true,
+  "customApiKeyResponses": {
+    "approved": [],
+    "rejected": []
+  },
+  "theme": "dark"
+}
+EOF
+
+# Clear any approved keys
+# Edit ~/.claude.json and ensure "approved": [] is empty
+
+# Restart Claude
+claude
+```
+
+#### Issue: "Permission denied" on scripts
+
+**Cause:** Scripts not executable
+
+**Solution:**
+```bash
+# Make scripts executable
+chmod +x switch-model check-config LegendarySetupKeys
+
+# Verify
+ls -la switch-model check-config LegendarySetupKeys
+# Should show: -rwxr-xr-x (755 permissions)
+```
+
+#### Issue: "Invalid model name"
+
+**Cause:** Using wrong model names for provider
+
+**Solution:**
+```bash
+# Check model names in settings
+grep "ANTHROPIC_MODEL" .claude/settings.json
+
+# For Z.AI, should be: glm-4.7 or glm-4.5-air
+# For Kimi, should be: kimi-k2-thinking-turbo or kimi-k2-turbo-preview
+
+# Fix by re-running setup
+bash LegendarySetupKeys
+```
+
+### Debug Mode
+```bash
+# Enable verbose output
+export DEBUG=1
+
+# Check what settings Claude Code is loading
+claude --debug
+
+# View logs
+cat ~/.claude/logs/*.log
+```
+
+### Getting Help
+```bash
+# Inside Claude Code
+/help
+/status
+/doctor
+
+# Check configuration
+./check-config
+
+# Test API connection
+bash LegendarySetupKeys
+```
+
+---
+
+## Advanced Features
+
+### Custom Model Configuration
+
+Edit settings files to use different models:
+```bash
+# Edit Z.AI config
+nano .claude/settings.zai.json
+
+# Available Z.AI models:
+# - glm-4.7 (primary)
+# - glm-4.6 (alternative)
+# - glm-4.5-air (fast, lightweight)
+
+# Edit Kimi config
+nano .claude/settings.kimi.json
+
+# Available Kimi models:
+# - kimi-k2-thinking-turbo (primary, shows reasoning)
+# - kimi-k2-turbo-preview (fast, no extended thinking)
+# - kimi-k2-0905 (extended context)
+# - kimi-k2.5 (latest, multimodal, costs 2x)
+```
+
+### Adding More Providers
+
+Want to add DeepSeek, Qwen, or other providers?
+```bash
+# 1. Add key to .envc
+nano .claude/.envc
+
+# Add line:
+DEEPSEEK_KEY='your-deepseek-key'
+
+# 2. Create new settings file
+cat > .claude/settings.deepseek.json << 'EOF'
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.deepseek.com/anthropic",
+    "ANTHROPIC_AUTH_TOKEN": "your-deepseek-key",
+    "ANTHROPIC_MODEL": "deepseek-chat",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": 1
+  }
+}
+EOF
+
+# 3. Update switcher script
+nano switch-model
+
+# Add new elif block:
+elif [ "$1" = "deepseek" ]; then
+    if [ -f "$CLAUDE_DIR/settings.deepseek.json" ]; then
+        cp "$CLAUDE_DIR/settings.deepseek.json" "$CLAUDE_DIR/settings.json"
+        echo "✓ Switched to DeepSeek"
+    fi
+fi
+
+# 4. Use it
+./switch-model deepseek
+claude
+```
+
+### Shell Aliases for Quick Access
+
+Add to `~/.bashrc` for convenient access:
+```bash
+cat >> ~/.bashrc << 'EOF'
+
+# Claude Code Quick Access
+alias cz='cd ~/n8n-ai-studio && ./switch-model zai && claude'
+alias ck='cd ~/n8n-ai-studio && ./switch-model kimi && claude'
+alias cc='cd ~/n8n-ai-studio && ./check-config'
+alias cs='cd ~/n8n-ai-studio && ./switch-model'
+
+# Quick project navigation
+alias n8n='cd ~/n8n-ai-studio'
+EOF
+
+source ~/.bashrc
+
+# Now use anywhere:
+cz        # Start Claude with Z.AI
+ck        # Start Claude with Kimi
+cc        # Check configuration
+cs zai    # Switch model without starting
+```
+
+### Multiple Projects Setup
+
+Replicate setup for different projects:
+```bash
+# Copy setup to another project
+cp ~/n8n-ai-studio/LegendarySetupKeys ~/other-project/
+cd ~/other-project
+bash LegendarySetupKeys
+
+# Each project gets isolated configuration
+~/n8n-ai-studio/.claude/settings.json    # Independent
+~/other-project/.claude/settings.json     # Independent
+```
+
+### Configuration Inheritance
+
+Global → Project hierarchy:
+```
+~/.claude.json                    # Global: Skip login (all projects)
+~/.claude/settings.json           # Global: Empty (avoid conflicts)
+~/project/.claude/settings.json   # Project: Active config (used)
+```
+
+Project settings **override** global settings.
+
+---
+
+## Best Practices
+
+### Cost Optimization
+
+1. **Use Z.AI by Default**
+   - Start with Z.AI for routine tasks
+   - Switch to Kimi only when needed
+
+2. **Monitor Usage**
+   - Track API costs via provider dashboards
+   - Set up billing alerts
+
+3. **Efficient Prompting**
+   - Be specific and clear
+   - Avoid unnecessary back-and-forth
+   - Use `/help` to understand capabilities
+
+### Security
+
+1. **Key Protection**
+```bash
+   # Always check permissions
+   ls -la .claude/.envc
+   # Must be: -rw------- (600)
+   
+   # Add to .gitignore
+   echo ".claude/.envc" >> .gitignore
+```
+
+2. **Git Safety**
+```bash
+   # Before committing
+   git status
+   # Verify .envc is not listed
+   
+   # If accidentally staged
+   git reset .claude/.envc
+   git rm --cached .claude/.envc
+```
+
+3. **Key Rotation**
+   - Rotate keys every 90 days
+   - Use different keys per project
+   - Immediately rotate if compromised
+
+### Performance
+
+1. **Model Selection**
+   - Z.AI: Simple tasks, documentation, refactoring
+   - Kimi: Complex logic, debugging, architecture
+
+2. **Context Management**
+   - Keep conversations focused
+   - Start fresh for new topics
+   - Use `/clear` to reset context
+
+3. **Response Quality**
+   - More specific prompts = better responses
+   - Provide context and examples
+   - Iterate on unclear answers
+
+### Maintenance
+
+1. **Regular Updates**
+```bash
+   # Update Claude Code
+   npm update -g @anthropic-ai/claude-code
+   
+   # Verify version
+   claude --version
+```
+
+2. **Configuration Backups**
+```bash
+   # Weekly backup
+   tar -czf claude-backup-$(date +%Y%m%d).tar.gz .claude/
+   
+   # Store securely
+   mv claude-backup-*.tar.gz ~/backups/
+```
+
+3. **Clean Logs**
+```bash
+   # Clear old logs (optional)
+   rm -rf ~/.claude/logs/*.log.old
+```
+
+---
+
+## FAQ
+
+### General Questions
+
+**Q: Do I need an Anthropic API key?**  
+A: No! This setup uses Z.AI and Kimi K2 keys instead, which are much cheaper.
+
+**Q: Can I use multiple providers simultaneously?**  
+A: No, only one provider is active at a time. Use `switch-model` to change.
+
+**Q: Will this work with Claude Desktop or other tools?**  
+A: This setup is specifically for Claude Code CLI. Desktop and browser versions use different authentication.
+
+**Q: Is my data sent to Anthropic?**  
+A: No, all requests go directly to Z.AI or Kimi K2. Anthropic doesn't see your data.
+
+### Setup Questions
+
+**Q: Can I install this system-wide for all projects?**  
+A: The configuration is project-specific by design. Copy the setup to each project where you want to use it.
+
+**Q: What if I already have Claude Code installed?**  
+A: The setup works with existing installations. It only configures project-level settings.
+
+**Q: Can I use this on Windows or macOS?**  
+A: The scripts are written for Linux/bash. They may work on macOS with minor modifications. Windows would need WSL or adaptation.
+
+### Provider Questions
+
+**Q: Which provider is cheaper, Z.AI or Kimi?**  
+A: Both are ~85-95% cheaper than Claude. Z.AI (GLM-4.7) is slightly cheaper than Kimi K2 for most tasks.
+
+**Q: Can I use the official Anthropic API with this setup?**  
+A: Yes, create a `settings.anthropic.json` with your Anthropic key and proper base URL, then add it to the switcher.
+
+**Q: How do I get API keys for these providers?**  
+A: 
+- Z.AI: Register at api.z.ai or open.bigmodel.cn
+- Kimi K2: Register at platform.moonshot.ai
+
+**Q: Do these providers support all Claude Code features?**  
+A: Most features work. Some Anthropic-specific features (like Claude Projects) may not be available.
+
+### Technical Questions
+
+**Q: Why use `.envc` instead of `.env`?**  
+A: To avoid conflicts with existing `.env` files commonly used in projects.
+
+**Q: Can I manually edit settings files?**  
+A: Yes, but it's recommended to use the setup script to ensure consistency.
+
+**Q: What happens if both Z.AI and Kimi keys expire?**  
+A: Claude Code won't start. Run `LegendarySetupKeys` to update keys.
+
+**Q: How do I completely uninstall this setup?**  
+A:
+```bash
+rm -rf .claude/
+rm switch-model check-config LegendarySetupKeys
+# Optionally: npm uninstall -g @anthropic-ai/claude-code
+```
+
+### Error Questions
+
+**Q: "Invalid API key" error when starting Claude**  
+A: Keys may be expired or incorrect. Re-run `LegendarySetupKeys` to test and update.
+
+**Q: "Connection timeout" errors**  
+A: Check internet connection and provider status. May also indicate wrong endpoint URL.
+
+**Q: Settings don't seem to take effect**  
+A: Ensure global settings are empty (`~/.claude/settings.json` should be `{}`). Clear environment variables.
+
+---
+
+## Reference
+
+### Command Reference
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `claude` | Start Claude Code | `claude` |
+| `claude --version` | Show version | `claude --version` |
+| `./switch-model zai` | Switch to Z.AI | `./switch-model zai` |
+| `./switch-model kimi` | Switch to Kimi K2 | `./switch-model kimi` |
+| `./switch-model` | Show current config | `./switch-model` |
+| `./check-config` | View configuration | `./check-config` |
+| `bash LegendarySetupKeys` | Run setup wizard | `bash LegendarySetupKeys` |
+
+### File Reference
+
+| File | Purpose | Permissions |
+|------|---------|-------------|
+| `.claude/.envc` | API key storage | `600` |
+| `.claude/settings.json` | Active configuration | `644` |
+| `.claude/settings.zai.json` | Z.AI template | `600` |
+| `.claude/settings.kimi.json` | Kimi template | `600` |
+| `~/.claude.json` | Global skip-login | `644` |
+| `~/.claude/settings.json` | Global settings (empty) | `644` |
+| `switch-model` | Model switcher script | `755` |
+| `check-config` | Config viewer | `755` |
+| `LegendarySetupKeys` | Setup wizard | `755` |
+
+### API Endpoint Reference
+
+| Provider | Endpoint | Models |
+|----------|----------|--------|
+| Z.AI (International) | `https://api.z.ai/api/anthropic` | glm-4.7, glm-4.5-air |
+| Z.AI (China) | `https://open.bigmodel.cn/api/anthropic` | glm-4.7, glm-4.5-air |
+| Kimi K2 | `https://api.moonshot.ai/anthropic` | kimi-k2-thinking-turbo, kimi-k2-turbo-preview |
+
+### Model Comparison
+
+| Model | Provider | Context | Speed | Cost | Best For |
+|-------|----------|---------|-------|------|----------|
+| glm-4.7 | Z.AI | 128K | Fast | $$ | General coding |
+| glm-4.5-air | Z.AI | 128K | Very Fast | $ | Quick tasks |
+| kimi-k2-thinking-turbo | Kimi | 256K | Medium | $$$ | Complex reasoning |
+| kimi-k2-turbo-preview | Kimi | 256K | Fast | $$ | Fast coding |
+
+### Environment Variables (Not Used)
+
+This setup **does not use** environment variables to avoid conflicts. All configuration is in settings files.
+
+If you see these, **remove them**:
+- `ANTHROPIC_API_KEY` ❌
+- `ANTHROPIC_AUTH_TOKEN` ❌
+- `ANTHROPIC_BASE_URL` ❌
+- `ANTHROPIC_MODEL` ❌
+
+### Links and Resources
+
+- **Claude Code Docs:** https://docs.claude.com/claude-code
+- **Z.AI Platform:** https://api.z.ai
+- **Z.AI China:** https://open.bigmodel.cn
+- **Kimi Platform:** https://platform.moonshot.ai
+- **Node.js:** https://nodejs.org
+- **npm Global Packages:** https://docs.npmjs.com/downloading-and-installing-packages-globally
+
+### Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 2026.02.12 | 2026-02-12 | Initial release with Z.AI and Kimi K2 support |
+
+---
+
+## Support
+
+### Getting Help
+
+1. **Check this manual** - Most issues are covered in Troubleshooting
+2. **Run diagnostics** - Use `./check-config` and `/status` in Claude
+3. **Test configuration** - Re-run `bash LegendarySetupKeys`
+4. **Review logs** - Check `~/.claude/logs/` for errors
+
+### Reporting Issues
+
+When reporting issues, provide:
+- Output of `./check-config`
+- Output of `claude --version`
+- Error messages (exact text)
+- Steps to reproduce
+
+### Contributing
+
+Improvements welcome! Areas for contribution:
+- Support for additional providers
+- Windows/macOS compatibility
+- Automated testing
+- Enhanced error handling
+
+---
+
+## License
+
+This setup is provided as-is for use with Claude Code and compatible AI providers.
+
+---
+
+**End of User Manual**
+
+*Last Updated: 2026-02-12*  
+*Version: 2026.02.12*  
+*Legendary Team 2025*
