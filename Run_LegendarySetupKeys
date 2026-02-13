@@ -7,7 +7,8 @@ set -e
 echo -e "\n=== Legendary Team 2025 – API Key Wizard (CORRECTED) ===\n"
 echo "Detects/tests/writes .envc keys for Claude Code with Anthropic-compatible endpoints.\n"
 
-PROJECT_ROOT="$(pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$SCRIPT_DIR"
 CLAUDE_DIR="$PROJECT_ROOT/.claude"
 ENV_FILE="$CLAUDE_DIR/.envc"
 SETTINGS_ZAI="$CLAUDE_DIR/settings.zai.json"
@@ -132,7 +133,7 @@ if [ -n "$ZAI_KEY" ]; then
     "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
     "ANTHROPIC_AUTH_TOKEN": "$ZAI_KEY",
     "API_TIMEOUT_MS": "3000000",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": 1,
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "ANTHROPIC_MODEL": "glm-4.7",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "glm-4.5-air",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "glm-4.7",
@@ -153,7 +154,7 @@ if [ -n "$KIMI_KEY" ]; then
     "ANTHROPIC_BASE_URL": "https://api.moonshot.ai/anthropic",
     "ANTHROPIC_AUTH_TOKEN": "$KIMI_KEY",
     "API_TIMEOUT_MS": "3000000",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": 1,
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "ANTHROPIC_MODEL": "kimi-k2-thinking-turbo",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "kimi-k2-thinking-turbo",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "kimi-k2-thinking-turbo",
@@ -200,27 +201,43 @@ cat > "$SWITCHER" << 'EOF'
 #!/bin/bash
 # Model Switcher for Claude Code
 
-CLAUDE_DIR="$(dirname "$0")/.claude"
+# Resolve the actual directory where this script lives (handles symlinks)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLAUDE_DIR="$SCRIPT_DIR/.claude"
+
+if [ ! -d "$CLAUDE_DIR" ]; then
+    echo "✗ .claude directory not found at $CLAUDE_DIR"
+    echo "  Run the setup wizard first: bash Run_LegendarySetupKeys"
+    exit 1
+fi
 
 if [ "$1" = "zai" ]; then
-    if [ -f "$CLAUDE_DIR/settings.zai.json" ]; then
+    if [ -f "$CLAUDE_DIR/settings.zai.json" ] && [ -s "$CLAUDE_DIR/settings.zai.json" ]; then
         cp "$CLAUDE_DIR/settings.zai.json" "$CLAUDE_DIR/settings.json"
         echo "✓ Switched to Z.AI (GLM-4.7)"
+        echo "  Restart Claude Code for changes to take effect."
     else
-        echo "✗ Z.AI settings not found"
+        echo "✗ Z.AI settings template not found or empty at $CLAUDE_DIR/settings.zai.json"
+        echo "  Re-run setup: bash Run_LegendarySetupKeys"
         exit 1
     fi
 elif [ "$1" = "kimi" ]; then
-    if [ -f "$CLAUDE_DIR/settings.kimi.json" ]; then
+    if [ -f "$CLAUDE_DIR/settings.kimi.json" ] && [ -s "$CLAUDE_DIR/settings.kimi.json" ]; then
         cp "$CLAUDE_DIR/settings.kimi.json" "$CLAUDE_DIR/settings.json"
         echo "✓ Switched to Kimi K2"
+        echo "  Restart Claude Code for changes to take effect."
     else
-        echo "✗ Kimi settings not found"
+        echo "✗ Kimi settings template not found or empty at $CLAUDE_DIR/settings.kimi.json"
+        echo "  Re-run setup: bash Run_LegendarySetupKeys"
         exit 1
     fi
 else
     echo "Current configuration:"
-    grep -E "ANTHROPIC_BASE_URL|ANTHROPIC_MODEL" "$CLAUDE_DIR/settings.json" 2>/dev/null || echo "No active configuration"
+    if [ -f "$CLAUDE_DIR/settings.json" ] && [ -s "$CLAUDE_DIR/settings.json" ]; then
+        grep -E "ANTHROPIC_BASE_URL|ANTHROPIC_MODEL" "$CLAUDE_DIR/settings.json" 2>/dev/null || echo "  (no provider info found in settings)"
+    else
+        echo "  No active configuration (settings.json missing or empty)"
+    fi
     echo ""
     echo "Usage: $0 [zai|kimi]"
     echo "  zai   - Switch to Z.AI (GLM-4.7)"
@@ -234,18 +251,21 @@ echo "✓ Created model switcher: $SWITCHER"
 STATUS_SCRIPT="$PROJECT_ROOT/check-config"
 cat > "$STATUS_SCRIPT" << 'EOF'
 #!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLAUDE_DIR="$SCRIPT_DIR/.claude"
+
 echo "=== Claude Code Configuration ==="
 echo ""
-if [ -f ".claude/settings.json" ]; then
+if [ -f "$CLAUDE_DIR/settings.json" ] && [ -s "$CLAUDE_DIR/settings.json" ]; then
     echo "Active Configuration:"
-    grep -E "ANTHROPIC_BASE_URL|ANTHROPIC_MODEL" .claude/settings.json | sed 's/^/  /'
+    grep -E "ANTHROPIC_BASE_URL|ANTHROPIC_MODEL" "$CLAUDE_DIR/settings.json" | sed 's/^/  /'
 else
-    echo "✗ No active configuration found"
+    echo "✗ No active configuration found (settings.json missing or empty)"
 fi
 echo ""
 echo "Available Configurations:"
-[ -f ".claude/settings.zai.json" ] && echo "  ✓ Z.AI (GLM-4.7)" || echo "  ✗ Z.AI"
-[ -f ".claude/settings.kimi.json" ] && echo "  ✓ Kimi K2" || echo "  ✗ Kimi K2"
+[ -f "$CLAUDE_DIR/settings.zai.json" ] && [ -s "$CLAUDE_DIR/settings.zai.json" ] && echo "  ✓ Z.AI (GLM-4.7)" || echo "  ✗ Z.AI"
+[ -f "$CLAUDE_DIR/settings.kimi.json" ] && [ -s "$CLAUDE_DIR/settings.kimi.json" ] && echo "  ✓ Kimi K2" || echo "  ✗ Kimi K2"
 echo ""
 echo "Switch with: ./switch-model [zai|kimi]"
 EOF

@@ -89,6 +89,17 @@ your-project/
 | **Z.AI** | GLM-4.7 | ~85% cheaper | General coding, documentation |
 | **Kimi K2** | kimi-k2-thinking-turbo | ~90% cheaper | Complex reasoning, debugging |
 
+## API Endpoints
+
+Both providers expose **Anthropic-compatible** endpoints that Claude Code connects to:
+
+| Provider | Base URL | Notes |
+|----------|----------|-------|
+| **Z.AI** | `https://api.z.ai/api/anthropic` | Anthropic-compatible endpoint for Claude Code ([docs](https://docs.z.ai/scenario-example/develop-tools/claude)) |
+| **Kimi K2** | `https://api.moonshot.ai/anthropic` | Anthropic-compatible endpoint |
+
+> **Note:** Z.AI also has an OpenAI-compatible endpoint (`/api/paas/v4`) and a coding-specific endpoint (`/api/coding/paas/v4`), but Claude Code requires the **Anthropic-compatible** endpoint (`/api/anthropic`). This setup uses the correct one.
+
 ## Common Commands
 ```bash
 # Switch providers
