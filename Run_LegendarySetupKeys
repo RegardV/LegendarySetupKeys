@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Legendary Team 2025 – API Key Wizard (v2026.02.12 CORRECTED)
-# Auto-detect .envc, test keys with Anthropic endpoints, configure Claude Code properly
+# Legendary Team 2025 – API Key Wizard (v2026.02.13 MULTI-PROVIDER)
+# Auto-detect .envc, test keys, configure Claude Code with multiple providers
+# Supports: Z.AI, Kimi K2, OpenRouter (400+ models), LM Studio (local)
 
 set -e
 
-echo -e "\n=== Legendary Team 2025 – API Key Wizard (CORRECTED) ===\n"
-echo "Detects/tests/writes .envc keys for Claude Code with Anthropic-compatible endpoints.\n"
+echo -e "\n=== Legendary Team 2025 – API Key Wizard (MULTI-PROVIDER) ===\n"
+echo "Configure Claude Code with alternative AI providers."
+echo "Supports: Z.AI, Kimi K2, OpenRouter, LM Studio (local)"
+echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR"
@@ -13,6 +16,8 @@ CLAUDE_DIR="$PROJECT_ROOT/.claude"
 ENV_FILE="$CLAUDE_DIR/.envc"
 SETTINGS_ZAI="$CLAUDE_DIR/settings.zai.json"
 SETTINGS_KIMI="$CLAUDE_DIR/settings.kimi.json"
+SETTINGS_OPENROUTER="$CLAUDE_DIR/settings.openrouter.json"
+SETTINGS_LMSTUDIO="$CLAUDE_DIR/settings.lmstudio.json"
 SETTINGS_ACTIVE="$CLAUDE_DIR/settings.json"
 GLOBAL_CLAUDE_JSON="$HOME/.claude.json"
 GLOBAL_SETTINGS="$HOME/.claude/settings.json"
@@ -27,6 +32,10 @@ mkdir -p "$BACKUP_DIR" "$HOME/.claude" "$CLAUDE_DIR"
 
 ZAI_KEY=""
 KIMI_KEY=""
+OPENROUTER_KEY=""
+LMSTUDIO_ENABLED=""
+LMSTUDIO_PORT="1234"
+LMSTUDIO_MODEL=""
 
 # Auto-retrieve from .envc
 if [ -f "$ENV_FILE" ]; then
@@ -34,6 +43,10 @@ if [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE" 2>/dev/null || echo ".envc loaded (some lines ignored)"
     ZAI_KEY="${ZAI_KEY:-}"
     KIMI_KEY="${KIMI_KEY:-}"
+    OPENROUTER_KEY="${OPENROUTER_KEY:-}"
+    LMSTUDIO_ENABLED="${LMSTUDIO_ENABLED:-}"
+    LMSTUDIO_PORT="${LMSTUDIO_PORT:-1234}"
+    LMSTUDIO_MODEL="${LMSTUDIO_MODEL:-}"
 else
     echo "⚠ No .envc found at $ENV_FILE"
 fi
@@ -43,24 +56,40 @@ test_key() {
     local provider="$1"
     local key="$2"
     local url model
-    
-    if [ "$provider" = "zai" ]; then
-        url="https://api.z.ai/api/anthropic/v1/messages"
-        model="glm-4.7"
-    else
-        url="https://api.moonshot.ai/anthropic/v1/messages"
-        model="kimi-k2-thinking-turbo"
-    fi
+
+    case "$provider" in
+        zai)
+            url="https://api.z.ai/api/anthropic/v1/messages"
+            model="glm-4.7"
+            ;;
+        kimi)
+            url="https://api.moonshot.ai/anthropic/v1/messages"
+            model="kimi-k2-thinking-turbo"
+            ;;
+        openrouter)
+            url="https://openrouter.ai/api/v1/messages"
+            model="anthropic/claude-sonnet-4-5"
+            ;;
+        lmstudio)
+            local port="${3:-1234}"
+            url="http://localhost:$port/v1/messages"
+            model="${4:-default}"
+            ;;
+        *)
+            echo "Unknown provider: $provider"
+            return 1
+            ;;
+    esac
 
     if ! command -v curl &> /dev/null; then
         echo "⚠ Curl missing — skipping test for $provider (assuming valid)."
         return 0
     fi
 
-    echo "Testing $provider key with Anthropic endpoint..."
-    
+    echo "Testing $provider with Anthropic endpoint..."
+
     # Test with Anthropic Messages API format
-    response=$(curl -s -w "%{http_code}" -X POST "$url" \
+    response=$(curl -s -w "%{http_code}" --connect-timeout 10 -X POST "$url" \
         -H "x-api-key: $key" \
         -H "anthropic-version: 2023-06-01" \
         -H "Content-Type: application/json" \
@@ -71,7 +100,7 @@ test_key() {
         echo "✓ $provider key valid!"
         return 0
     else
-        echo "✗ $provider key returned: $response"
+        echo "✗ $provider returned: $response"
         return 1
     fi
 }
@@ -95,23 +124,56 @@ if [ -n "$KIMI_KEY" ]; then
     fi
 fi
 
-# Prompt if still empty
-if [ -z "$ZAI_KEY" ] && [ -z "$KIMI_KEY" ]; then
+if [ -n "$OPENROUTER_KEY" ]; then
     echo ""
-    echo "No valid keys found."
-    read -p "Configure Z.AI (GLM-4.7)? (y/n): " choice
-    if [[ "$choice" =~ ^[Yy]$ ]]; then
-        read -p "Z.AI API key: " ZAI_KEY
-    fi
-    
-    read -p "Configure Kimi K2? (y/n): " choice
-    if [[ "$choice" =~ ^[Yy]$ ]]; then
-        read -p "Kimi API key: " KIMI_KEY
+    if ! test_key "openrouter" "$OPENROUTER_KEY"; then
+        echo "Current OpenRouter key invalid or test failed."
+        read -p "Enter new OpenRouter key (or press Enter to skip): " new_key
+        [ -n "$new_key" ] && OPENROUTER_KEY="$new_key"
     fi
 fi
 
-if [ -z "$ZAI_KEY" ] && [ -z "$KIMI_KEY" ]; then
-    echo "⚠ No keys configured. Exiting."
+if [ "$LMSTUDIO_ENABLED" = "true" ]; then
+    echo ""
+    if ! test_key "lmstudio" "lmstudio" "$LMSTUDIO_PORT"; then
+        echo "LM Studio not reachable on port $LMSTUDIO_PORT (is the server running?)."
+        echo "Settings will still be created — start LM Studio before using Claude Code."
+    fi
+fi
+
+# Prompt for new providers if no keys exist at all
+if [ -z "$ZAI_KEY" ] && [ -z "$KIMI_KEY" ] && [ -z "$OPENROUTER_KEY" ] && [ "$LMSTUDIO_ENABLED" != "true" ]; then
+    echo ""
+    echo "No valid keys found. Choose providers to configure:"
+    echo ""
+
+    read -p "1. Configure Z.AI (GLM-4.7, ~\$3-15/mo)? (y/n): " choice
+    if [[ "$choice" =~ ^[Yy]$ ]]; then
+        read -p "   Z.AI API key: " ZAI_KEY
+    fi
+
+    read -p "2. Configure Kimi K2 (thinking-turbo)? (y/n): " choice
+    if [[ "$choice" =~ ^[Yy]$ ]]; then
+        read -p "   Kimi API key: " KIMI_KEY
+    fi
+
+    read -p "3. Configure OpenRouter (400+ models incl. Grok, GPT, Gemini)? (y/n): " choice
+    if [[ "$choice" =~ ^[Yy]$ ]]; then
+        read -p "   OpenRouter API key: " OPENROUTER_KEY
+    fi
+
+    read -p "4. Configure LM Studio (free, local models)? (y/n): " choice
+    if [[ "$choice" =~ ^[Yy]$ ]]; then
+        LMSTUDIO_ENABLED="true"
+        read -p "   LM Studio port (default 1234): " port_input
+        [ -n "$port_input" ] && LMSTUDIO_PORT="$port_input"
+        read -p "   Model name (e.g. qwen2.5-coder-32b, or press Enter for default): " model_input
+        [ -n "$model_input" ] && LMSTUDIO_MODEL="$model_input"
+    fi
+fi
+
+if [ -z "$ZAI_KEY" ] && [ -z "$KIMI_KEY" ] && [ -z "$OPENROUTER_KEY" ] && [ "$LMSTUDIO_ENABLED" != "true" ]; then
+    echo "⚠ No providers configured. Exiting."
     exit 0
 fi
 
@@ -121,6 +183,10 @@ cat > "$ENV_FILE" << EOF
 # These keys are used for Claude Code with Anthropic-compatible endpoints
 ZAI_KEY='$ZAI_KEY'
 KIMI_KEY='$KIMI_KEY'
+OPENROUTER_KEY='$OPENROUTER_KEY'
+LMSTUDIO_ENABLED='$LMSTUDIO_ENABLED'
+LMSTUDIO_PORT='$LMSTUDIO_PORT'
+LMSTUDIO_MODEL='$LMSTUDIO_MODEL'
 EOF
 chmod 600 "$ENV_FILE"
 echo "✓ Keys persisted to $ENV_FILE"
@@ -132,6 +198,7 @@ if [ -n "$ZAI_KEY" ]; then
   "env": {
     "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
     "ANTHROPIC_AUTH_TOKEN": "$ZAI_KEY",
+    "ANTHROPIC_API_KEY": "",
     "API_TIMEOUT_MS": "3000000",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "ANTHROPIC_MODEL": "glm-4.7",
@@ -153,6 +220,7 @@ if [ -n "$KIMI_KEY" ]; then
   "env": {
     "ANTHROPIC_BASE_URL": "https://api.moonshot.ai/anthropic",
     "ANTHROPIC_AUTH_TOKEN": "$KIMI_KEY",
+    "ANTHROPIC_API_KEY": "",
     "API_TIMEOUT_MS": "3000000",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "ANTHROPIC_MODEL": "kimi-k2-thinking-turbo",
@@ -167,15 +235,72 @@ EOF
     echo "✓ Created Kimi settings: $SETTINGS_KIMI"
 fi
 
-# Set default active settings
-if [ -f "$SETTINGS_ZAI" ]; then
+# Create OpenRouter settings file
+if [ -n "$OPENROUTER_KEY" ]; then
+    cat > "$SETTINGS_OPENROUTER" << EOF
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+    "ANTHROPIC_AUTH_TOKEN": "$OPENROUTER_KEY",
+    "ANTHROPIC_API_KEY": "",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "ANTHROPIC_MODEL": "anthropic/claude-sonnet-4-5",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "anthropic/claude-haiku-4-5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "anthropic/claude-sonnet-4-5",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "anthropic/claude-opus-4",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "anthropic/claude-haiku-4-5"
+  }
+}
+EOF
+    chmod 600 "$SETTINGS_OPENROUTER"
+    echo "✓ Created OpenRouter settings: $SETTINGS_OPENROUTER"
+    echo "  Tip: Change models in $SETTINGS_OPENROUTER to any OpenRouter model, e.g.:"
+    echo "    x-ai/grok-4, google/gemini-2.5-pro, deepseek/deepseek-r1, meta-llama/llama-4-maverick"
+fi
+
+# Create LM Studio settings file
+if [ "$LMSTUDIO_ENABLED" = "true" ]; then
+    local_model="${LMSTUDIO_MODEL:-default}"
+    cat > "$SETTINGS_LMSTUDIO" << EOF
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:$LMSTUDIO_PORT",
+    "ANTHROPIC_AUTH_TOKEN": "lmstudio",
+    "ANTHROPIC_API_KEY": "",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "ANTHROPIC_MODEL": "$local_model",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "$local_model",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "$local_model",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "$local_model",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "$local_model"
+  }
+}
+EOF
+    chmod 600 "$SETTINGS_LMSTUDIO"
+    echo "✓ Created LM Studio settings: $SETTINGS_LMSTUDIO"
+    echo "  Requires: LM Studio v0.4.1+ running with Anthropic-compatible server"
+fi
+
+# Set default active settings (first available wins)
+DEFAULT_PROVIDER=""
+if [ -f "$SETTINGS_ZAI" ] && [ -s "$SETTINGS_ZAI" ]; then
     cp "$SETTINGS_ZAI" "$SETTINGS_ACTIVE"
     echo "✓ Set Z.AI as active configuration"
     DEFAULT_PROVIDER="zai"
-elif [ -f "$SETTINGS_KIMI" ]; then
+elif [ -f "$SETTINGS_KIMI" ] && [ -s "$SETTINGS_KIMI" ]; then
     cp "$SETTINGS_KIMI" "$SETTINGS_ACTIVE"
     echo "✓ Set Kimi as active configuration"
     DEFAULT_PROVIDER="kimi"
+elif [ -f "$SETTINGS_OPENROUTER" ] && [ -s "$SETTINGS_OPENROUTER" ]; then
+    cp "$SETTINGS_OPENROUTER" "$SETTINGS_ACTIVE"
+    echo "✓ Set OpenRouter as active configuration"
+    DEFAULT_PROVIDER="openrouter"
+elif [ -f "$SETTINGS_LMSTUDIO" ] && [ -s "$SETTINGS_LMSTUDIO" ]; then
+    cp "$SETTINGS_LMSTUDIO" "$SETTINGS_ACTIVE"
+    echo "✓ Set LM Studio as active configuration"
+    DEFAULT_PROVIDER="lmstudio"
 fi
 
 # Setup ~/.claude.json (skip login)
@@ -199,9 +324,8 @@ echo "✓ Cleared global settings (using project-level only)"
 SWITCHER="$PROJECT_ROOT/switch-model"
 cat > "$SWITCHER" << 'EOF'
 #!/bin/bash
-# Model Switcher for Claude Code
+# Model Switcher for Claude Code — Multi-Provider
 
-# Resolve the actual directory where this script lives (handles symlinks)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_DIR="$SCRIPT_DIR/.claude"
 
@@ -211,38 +335,45 @@ if [ ! -d "$CLAUDE_DIR" ]; then
     exit 1
 fi
 
-if [ "$1" = "zai" ]; then
-    if [ -f "$CLAUDE_DIR/settings.zai.json" ] && [ -s "$CLAUDE_DIR/settings.zai.json" ]; then
-        cp "$CLAUDE_DIR/settings.zai.json" "$CLAUDE_DIR/settings.json"
-        echo "✓ Switched to Z.AI (GLM-4.7)"
+switch_to() {
+    local name="$1"
+    local label="$2"
+    local template="$CLAUDE_DIR/settings.${name}.json"
+
+    if [ -f "$template" ] && [ -s "$template" ]; then
+        cp "$template" "$CLAUDE_DIR/settings.json"
+        echo "✓ Switched to $label"
         echo "  Restart Claude Code for changes to take effect."
     else
-        echo "✗ Z.AI settings template not found or empty at $CLAUDE_DIR/settings.zai.json"
+        echo "✗ $label settings not found or empty at $template"
         echo "  Re-run setup: bash Run_LegendarySetupKeys"
         exit 1
     fi
-elif [ "$1" = "kimi" ]; then
-    if [ -f "$CLAUDE_DIR/settings.kimi.json" ] && [ -s "$CLAUDE_DIR/settings.kimi.json" ]; then
-        cp "$CLAUDE_DIR/settings.kimi.json" "$CLAUDE_DIR/settings.json"
-        echo "✓ Switched to Kimi K2"
-        echo "  Restart Claude Code for changes to take effect."
-    else
-        echo "✗ Kimi settings template not found or empty at $CLAUDE_DIR/settings.kimi.json"
-        echo "  Re-run setup: bash Run_LegendarySetupKeys"
-        exit 1
-    fi
-else
-    echo "Current configuration:"
-    if [ -f "$CLAUDE_DIR/settings.json" ] && [ -s "$CLAUDE_DIR/settings.json" ]; then
-        grep -E "ANTHROPIC_BASE_URL|ANTHROPIC_MODEL" "$CLAUDE_DIR/settings.json" 2>/dev/null || echo "  (no provider info found in settings)"
-    else
-        echo "  No active configuration (settings.json missing or empty)"
-    fi
-    echo ""
-    echo "Usage: $0 [zai|kimi]"
-    echo "  zai   - Switch to Z.AI (GLM-4.7)"
-    echo "  kimi  - Switch to Kimi K2"
-fi
+}
+
+case "$1" in
+    zai)        switch_to "zai" "Z.AI (GLM-4.7)" ;;
+    kimi)       switch_to "kimi" "Kimi K2 (thinking-turbo)" ;;
+    openrouter) switch_to "openrouter" "OpenRouter (400+ models)" ;;
+    lmstudio)   switch_to "lmstudio" "LM Studio (local)" ;;
+    *)
+        echo "Current configuration:"
+        if [ -f "$CLAUDE_DIR/settings.json" ] && [ -s "$CLAUDE_DIR/settings.json" ]; then
+            grep -E "ANTHROPIC_BASE_URL|ANTHROPIC_MODEL" "$CLAUDE_DIR/settings.json" 2>/dev/null || echo "  (no provider info found)"
+        else
+            echo "  No active configuration (settings.json missing or empty)"
+        fi
+        echo ""
+        echo "Usage: $0 [provider]"
+        echo ""
+        echo "Available providers:"
+        [ -f "$CLAUDE_DIR/settings.zai.json" ] && [ -s "$CLAUDE_DIR/settings.zai.json" ] && echo "  zai        - Z.AI (GLM-4.7, ~\$3-15/mo)"
+        [ -f "$CLAUDE_DIR/settings.kimi.json" ] && [ -s "$CLAUDE_DIR/settings.kimi.json" ] && echo "  kimi       - Kimi K2 (thinking-turbo)"
+        [ -f "$CLAUDE_DIR/settings.openrouter.json" ] && [ -s "$CLAUDE_DIR/settings.openrouter.json" ] && echo "  openrouter - OpenRouter (400+ models: Grok, GPT, Gemini, etc.)"
+        [ -f "$CLAUDE_DIR/settings.lmstudio.json" ] && [ -s "$CLAUDE_DIR/settings.lmstudio.json" ] && echo "  lmstudio   - LM Studio (free, local models)"
+        echo ""
+        ;;
+esac
 EOF
 chmod +x "$SWITCHER"
 echo "✓ Created model switcher: $SWITCHER"
@@ -263,11 +394,13 @@ else
     echo "✗ No active configuration found (settings.json missing or empty)"
 fi
 echo ""
-echo "Available Configurations:"
+echo "Available Providers:"
 [ -f "$CLAUDE_DIR/settings.zai.json" ] && [ -s "$CLAUDE_DIR/settings.zai.json" ] && echo "  ✓ Z.AI (GLM-4.7)" || echo "  ✗ Z.AI"
 [ -f "$CLAUDE_DIR/settings.kimi.json" ] && [ -s "$CLAUDE_DIR/settings.kimi.json" ] && echo "  ✓ Kimi K2" || echo "  ✗ Kimi K2"
+[ -f "$CLAUDE_DIR/settings.openrouter.json" ] && [ -s "$CLAUDE_DIR/settings.openrouter.json" ] && echo "  ✓ OpenRouter (400+ models)" || echo "  ✗ OpenRouter"
+[ -f "$CLAUDE_DIR/settings.lmstudio.json" ] && [ -s "$CLAUDE_DIR/settings.lmstudio.json" ] && echo "  ✓ LM Studio (local)" || echo "  ✗ LM Studio"
 echo ""
-echo "Switch with: ./switch-model [zai|kimi]"
+echo "Switch with: ./switch-model [zai|kimi|openrouter|lmstudio]"
 EOF
 chmod +x "$STATUS_SCRIPT"
 echo "✓ Created status checker: $STATUS_SCRIPT"
